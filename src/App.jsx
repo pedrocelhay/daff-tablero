@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const sbFetch = async (method, id, body) => {
+const sbFetch = async (method, id, body, accessToken = null) => {
+  const authToken = accessToken || SUPABASE_KEY;
   const url = `${SUPABASE_URL}/rest/v1/tablero${method === "GET" ? "" : id ? `?id=eq.${id}` : ""}`;
   const res = await fetch(method === "GET" ? `${SUPABASE_URL}/rest/v1/tablero?select=*` : url, {
     method,
     headers: {
       "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Authorization": `Bearer ${authToken}`,
       "Content-Type": "application/json",
       "Prefer": method === "POST" ? "resolution=merge-duplicates" : "",
     },
@@ -170,6 +173,56 @@ const DeltaCobranza = ({ meta, real }) => {
         <div style={{ height: "100%", width: `${Math.min(s.pct || 0, 100)}%`, background: s.color, borderRadius: 4 }} />
       </div>
       <div style={{ fontSize: 11, fontWeight: 700, color: s.color, marginTop: 5 }}>{s.label}</div>
+    </div>
+  );
+};
+
+// ── Login ────────────────────────────────────────────────────────────
+const LoginScreen = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError("Email o contraseña incorrectos");
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#F0F4FA", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "white", borderRadius: 16, padding: "40px 36px", width: "100%", maxWidth: 380, boxShadow: "0 8px 32px rgba(27,42,74,0.12)", border: "1.5px solid #E2E8F0" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#60A5FA", marginBottom: 8 }}>Tablero de Compromisos</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#1B2A4A" }}>Daff</h1>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6 }}>Ingresa con tu cuenta</div>
+        </div>
+        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="tu@email.com"
+              style={{ width: "100%", border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#1e293b", outline: "none", background: "#FAFBFC", boxSizing: "border-box" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Contraseña</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••"
+              style={{ width: "100%", border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#1e293b", outline: "none", background: "#FAFBFC", boxSizing: "border-box" }} />
+          </div>
+          {error && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#dc2626" }}>
+              {error}
+            </div>
+          )}
+          <button type="submit" disabled={loading}
+            style={{ background: loading ? "#94a3b8" : "#1B2A4A", color: "white", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", marginTop: 4 }}>
+            {loading ? "Ingresando…" : "Ingresar"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
@@ -341,6 +394,8 @@ const TablaReuniones = ({ reuniones, onChange, modoBalance = false, disabled = f
 
 // ── App principal ────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [mes, setMes] = useState(new Date().getMonth());
   const [año, setAño] = useState(2026);
   const [linea, setLinea] = useState(0);
@@ -351,9 +406,22 @@ export default function App() {
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(true);
 
+  // Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Cargar todos los datos desde Supabase al iniciar
   useEffect(() => {
-    sbFetch("GET").then(rows => {
+    if (!session) return;
+    sbFetch("GET", null, null, session.access_token).then(rows => {
       if (Array.isArray(rows)) {
         const loaded = {};
         rows.forEach(row => { loaded[row.id] = row.data; });
@@ -361,14 +429,15 @@ export default function App() {
       }
       setCargando(false);
     }).catch(() => setCargando(false));
-  }, []);
+  }, [session]);
 
   // Guardar en Supabase cuando cambian los datos
   const guardarEnNube = useCallback(async (key, value) => {
+    if (!session) return;
     setGuardando(true);
-    await sbFetch("POST", key, { id: key, data: value, updated_at: new Date().toISOString() });
+    await sbFetch("POST", key, { id: key, data: value, updated_at: new Date().toISOString() }, session.access_token);
     setTimeout(() => setGuardando(false), 1000);
-  }, []);
+  }, [session]);
 
   const key = `${año}-${mes}-${linea}`;
   const d = data[key] || emptyLine();
@@ -461,6 +530,14 @@ export default function App() {
   const vs = semaforo(ventaPct);
 
 
+  if (authLoading) return (
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#F0F4FA", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ fontSize: 13, color: "#94a3b8" }}>Cargando…</div>
+    </div>
+  );
+
+  if (!session) return <LoginScreen />;
+
   if (cargando) return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#F0F4FA", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 36 }}>☁️</div>
@@ -485,6 +562,10 @@ export default function App() {
                 ? <span style={{ fontSize: 12, color: "#93C5FD", fontWeight: 600 }}>☁️ Guardando…</span>
                 : <span style={{ fontSize: 12, color: "#4ADE80", fontWeight: 600 }}>✓ Sincronizado</span>
               }
+              <button onClick={() => supabase.auth.signOut()}
+                style={{ background: "rgba(255,255,255,0.1)", color: "#94a3b8", border: "1.5px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Salir
+              </button>
               <select value={mes} onChange={e => setMes(+e.target.value)}
                 style={{ background: "rgba(255,255,255,0.1)", color: "white", border: "1.5px solid rgba(255,255,255,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                 {MESES.map((m,i) => <option key={i} value={i} style={{ color: "#1B2A4A", background: "white" }}>{m}</option>)}
