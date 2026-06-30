@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
-const SUPABASE_URL = "https://cnmhqrcanhastgvbwyqk.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubWhxcmNhbmhhc3RndmJ3eXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMzg2MjAsImV4cCI6MjA5NjcxNDYyMH0.2DaDd-_J6T1Fk2q733ncbkAy8jM7TGioTeDIt9J8Yxc";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
 
 const sbFetch = async (method, id, body) => {
   const url = `${SUPABASE_URL}/rest/v1/tablero${method === "GET" ? "" : id ? `?id=eq.${id}` : ""}`;
@@ -74,7 +74,8 @@ const emptyLine = () => ({
   cobranzaReal: "",
   notasLogro: "",
   campana: { nombre: "", tipo: "promocion", estado: "planificada" },
-  accion: { descripcion: "", estado: "pendiente" },  // acción especial del mes (ej: liquidación de stock)
+  accion: { descripcion: "", estado: "pendiente" },
+  reuniones: [],
   compromisoFirmado: false,
   logroFirmado: false,
 });
@@ -459,8 +460,6 @@ export default function App() {
   const ventaPct = pct(d.resultadoVenta, d.metaVenta);
   const vs = semaforo(ventaPct);
 
-  const reunionesRealizadas = +d.reunionesReal || 0;
-  const reunionesPendientes = 0;
 
   if (cargando) return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#F0F4FA", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
@@ -565,6 +564,17 @@ export default function App() {
                 <Input label="Máx. clientes atrasados +10d" value={d.cobranzaMeta} onChange={upd("cobranzaMeta")} disabled={d.compromisoFirmado} />
               </div>
 
+              {/* Detalle de reuniones */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#1B2A4A", marginBottom: 4 }}>📅 Detalle de reuniones</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>Planifica las reuniones concretas del mes con cliente y propósito.</div>
+                <TablaReuniones
+                  reuniones={d.reuniones}
+                  onChange={upd("reuniones")}
+                  disabled={d.compromisoFirmado}
+                />
+              </div>
+
               {/* Campaña */}
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: "#1B2A4A", marginBottom: 4 }}>📣 Campaña del mes</div>
@@ -660,6 +670,17 @@ export default function App() {
                 <Input label="Opor. perdidas" value={d.opPerdidas} onChange={upd("opPerdidas")} />
                 <Input label="Opor. nuevas" value={d.opNuevas} onChange={upd("opNuevas")} />
               </div>
+
+              {/* Reuniones del mes */}
+              {d.reuniones.length > 0 && (
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#1B2A4A", marginBottom: 10 }}>📅 Reuniones del mes</div>
+                  <TablaReuniones
+                    reuniones={d.reuniones}
+                    onChange={upd("reuniones")}
+                  />
+                </div>
+              )}
 
               {/* Campaña — estado */}
               {d.campana.nombre && (
@@ -839,7 +860,7 @@ export default function App() {
 
                   {/* Reflexiones */}
                   {(d.notasCompromiso || d.notasLogro) && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                       {d.notasCompromiso && (
                         <div style={{ background: "#EFF6FF", borderRadius: 10, padding: "12px 14px", border: "1px solid #BFDBFE" }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: "#1D4ED8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>🎯 Foco declarado</div>
@@ -852,6 +873,18 @@ export default function App() {
                           <div style={{ fontSize: 13, color: "#166534", lineHeight: 1.55 }}>{d.notasLogro}</div>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {d.reuniones.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>📅 Reuniones</div>
+                      <TablaReuniones
+                        reuniones={d.reuniones}
+                        onChange={upd("reuniones")}
+                        modoBalance={true}
+                        disabled={true}
+                      />
                     </div>
                   )}
                 </div>
